@@ -1,0 +1,16 @@
+﻿<div ng-controller="DynamicDropdownController">
+    <div ng-if="loading">
+        <small>Loading options...</small>
+    </div>
+
+    <select ng-if="!loading"
+            ng-model="model.value"
+            class="umb-property-editor"
+            ng-options="option.value as option.name for option in options">
+        <option value="">-- Select --</option>
+    </select>
+
+    <div ng-if="!loading && options.length === 0" class="alert alert-warning">
+        <small>No options available. Please create dropdown options in Settings.</small>
+    </div>
+</div>

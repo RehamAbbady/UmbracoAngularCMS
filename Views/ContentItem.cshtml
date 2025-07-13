@@ -1,0 +1,14 @@
+﻿@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage<ContentModels.ContentItem>
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>@Model.Title</title>
+</head>
+<body>
+    <h1>@Model.Title</h1>
+    <div>@Html.Raw(Model.Content)</div>
+</body>
+</html>

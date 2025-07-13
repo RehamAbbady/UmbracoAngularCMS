@@ -1,11 +1,18 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Include="App_Plugins\ApprovalWorkflow\approval-dialog.html" />
+    <Content Include="App_Plugins\ApprovalWorkflow\approval.styles.css" />
+    <Content Include="App_Plugins\ApprovalWorkflow\dashboard.html" />
+    <Content Include="App_Plugins\DynamicDropdown\dynamicdropdown.html" />
+  </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore.Annotations" Version="9.0.1" />
     <PackageReference Include="Umbraco.Cms" Version="13.9.2" />
   </ItemGroup>
 
@@ -13,6 +20,13 @@
     <!-- Opt-in to app-local ICU to ensure consistent globalization APIs across different platforms -->
     <PackageReference Include="Microsoft.ICU.ICU4C.Runtime" Version="72.1.0.3" />
     <RuntimeHostConfigurationOption Include="System.Globalization.AppLocalIcu" Value="72.1.0.3" Condition="$(RuntimeIdentifier.StartsWith('linux')) or $(RuntimeIdentifier.StartsWith('win')) or ('$(RuntimeIdentifier)' == '' and !$([MSBuild]::IsOSPlatform('osx')))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="App_Plugins\ApprovalWorkflow\approval.controller.js" />
+    <None Include="app_plugins\approvalworkflow\package.manifest" />
+    <None Include="App_Plugins\DynamicDropdown\dynamicdropdown.controller.js" />
+    <None Include="app_plugins\dynamicdropdown\package.manifest" />
   </ItemGroup>
 
   <PropertyGroup>

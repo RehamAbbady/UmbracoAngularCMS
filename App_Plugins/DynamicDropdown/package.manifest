@@ -1,0 +1,27 @@
+{
+  "propertyEditors": [
+    {
+      "alias": "DynamicDropdown",
+      "name": "Dynamic Dropdown",
+      "icon": "icon-list",
+      "group": "Common",
+      "editor": {
+        "view": "/App_Plugins/DynamicDropdown/dynamicdropdown.html",
+        "valueType": "STRING"
+      },
+      "prevalues": {
+        "fields": [
+          {
+            "label": "Category",
+            "description": "Which category of options to load",
+            "key": "category",
+            "view": "textstring"
+          }
+        ]
+      }
+    }
+  ],
+  "javascript": [
+    "/App_Plugins/DynamicDropdown/dynamicdropdown.controller.js"
+  ]
+}

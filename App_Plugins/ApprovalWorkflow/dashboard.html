@@ -1,0 +1,72 @@
+﻿<div ng-controller="ApprovalDashboardController as vm" class="approval-dashboard">
+    <h3>Content Approval Dashboard</h3>
+
+    <div ng-if="vm.loading" class="text-center">
+        <small>Loading pending approvals...</small>
+    </div>
+
+    <div class="approval-list" ng-if="!vm.loading">
+        <h4>Pending Approvals ({{vm.pendingItems.length}})</h4>
+
+        <div ng-if="vm.pendingItems.length === 0" class="alert alert-info">
+            <p>No items pending approval.</p>
+        </div>
+
+        <table class="table" ng-if="vm.pendingItems.length > 0">
+            <thead>
+                <tr>
+                    <th>Content</th>
+                    <th>Created By</th>
+                    <th>Category</th>
+                    <th>Priority</th>
+                    <th>Approval Type</th>
+                    <th>Progress</th>
+                    <th>Current Step</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr ng-repeat="item in vm.pendingItems">
+                    <td>
+                        <i class="{{item.icon || 'icon-document'}}"></i>
+                        {{item.name}}
+                    </td>
+                    <td>{{item.createdBy}}</td>
+                    <td>{{item.category || '-'}}</td>
+                    <td>
+                        <span class="label" ng-class="{
+                            'label-important': item.priority === 'high' || item.priority === 'urgent',
+                            'label-warning': item.priority === 'medium',
+                            'label-info': item.priority === 'low'
+                        }">{{item.priority}}</span>
+                    </td>
+                    <td>
+                        <span class="badge" ng-class="{
+                            'badge-success': item.approvalType === 'Single',
+                            'badge-warning': item.approvalType === 'Multiple'
+                        }">{{item.approvalType}}</span>
+                    </td>
+                    <td>{{item.approvalProgress}}</td>
+                    <td>{{item.currentStep}}</td>
+                    <td>
+                        <button class="btn btn-primary btn-xs" ng-click="vm.approve(item)">
+                            <i class="icon-check"></i> Approve
+                        </button>
+                        <button class="btn btn-danger btn-xs" ng-click="vm.reject(item)">
+                            <i class="icon-delete"></i> Reject
+                        </button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="alert alert-info" style="margin-top: 20px;">
+            <h5>Approval Rules:</h5>
+            <ul>
+                <li><strong>Single Approval:</strong> Low priority or Blog/News - Editor can publish after approval</li>
+                <li><strong>Multiple Approval:</strong> Medium priority or Announcements - Requires Manager approval</li>
+                <li><strong>Executive Approval:</strong> High/Urgent priority - Requires Director approval</li>
+            </ul>
+        </div>
+    </div>
+</div>

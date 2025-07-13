@@ -2,122 +2,164 @@ using Microsoft.AspNetCore.Mvc;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Web.Common.Controllers;
 using UmbracoAngularCMS.Models;
-using Umbraco.Cms.Core.Models;
 using Umbraco.Cms.Core.Models.PublishedContent;
 using Microsoft.AspNetCore.Cors;
 using Umbraco.Cms.Core;
 using System.Text.Json;
-using System.Xml.XPath;
-
 
 namespace UmbracoAngularCMS.Controllers
 {
     [EnableCors("AllowAngularApp")]
     [ApiController]
     [Route("api/[controller]")]
-    [Produces("application/json")]
-
     public class ContentApiController : UmbracoApiController
     {
-        private readonly IContentService _contentService;
+        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IPublishedContentQuery _publishedContentQuery;
-        private readonly IContentTypeService _contentTypeService;
-        private readonly IMediaService _mediaService;
+        private readonly IContentService _contentService;
 
-        public ContentApiController(
-            IContentService contentService, 
+        public ContentApiController(IHttpContextAccessor httpContextAccessor,
             IPublishedContentQuery publishedContentQuery,
-            IContentTypeService contentTypeService,
-            IMediaService mediaService)
+            IContentService contentService)
         {
-            _contentService = contentService;
+            _httpContextAccessor = httpContextAccessor;
             _publishedContentQuery = publishedContentQuery;
-            _contentTypeService = contentTypeService;
-            _mediaService = mediaService;
+            _contentService = contentService;
         }
 
-        [HttpGet("approved")]
-        public IActionResult GetApprovedContent()
+        [HttpGet("published-content")]
+        public IActionResult GetPublishedContent()
         {
             var contentItems = _publishedContentQuery
                 .ContentAtRoot()
                 .FirstOrDefault()?
-                .Descendants("contentItem")
-                .Where(x => x.Value<string>("status") == "Approved")
-                .Select(MapToContentItemModel)
+                .DescendantsOfType("contentItem")
+                .Where(x => x.IsPublished())
+                .Select(MapToContentItemDto)
+                .OrderByDescending(x => x.UpdateDate)
                 .ToList();
 
-            return Ok(contentItems ?? new List<ContentItemModel>());
+            return Ok(contentItems ?? new List<ContentItemDto>());
         }
 
-        [HttpGet("pending")]
-        public IActionResult GetPendingContent()
+        [HttpGet("dropdown-options")]
+        public IActionResult GetDropdownOptions([FromQuery] string category = null)
+        {
+            var options = _publishedContentQuery
+                .ContentAtRoot()
+                .FirstOrDefault()?
+                .DescendantsOfType("dropdownOption");
+
+            var tt = _publishedContentQuery
+           .ContentAtRoot().FirstOrDefault();
+
+            if (!string.IsNullOrEmpty(category))
+            {
+                options = options?.Where(x => x.Value<string>("category") == category);
+            }
+
+            var result = options?
+                .Select(x => new DropdownOptionDto
+                {
+                    Key = x.Value<string>("ddKey"),
+                    Value = x.Value<string>("value"),
+                    Category = x.Value<string>("category"),
+                    SortOrder1 = x.Value<int>("sortOrder1")
+                })
+                .OrderBy(x => x.SortOrder1)
+                .ToList();
+
+            return Ok(result ?? new List<DropdownOptionDto>());
+        }
+
+        private ContentItemDto MapToContentItemDto(IPublishedContent content)
+        {
+            var imageUrl = content.Value<IPublishedContent>("featuredImage")?.Url() ?? string.Empty;
+
+            // Convert relative URL to absolute URL
+            if (!string.IsNullOrEmpty(imageUrl) && imageUrl.StartsWith("/"))
+            {
+                var request = _httpContextAccessor.HttpContext?.Request;
+                if (request != null)
+                {
+                    imageUrl = $"{request.Scheme}://{request.Host}{imageUrl}";
+                }
+            }
+
+            return new ContentItemDto
+            {
+                Id = content.Id,
+                Title = content.Value<string>("title") ?? string.Empty,
+                Content = content.Value<string>("content") ?? string.Empty,
+                ImageUrl = imageUrl,
+                Category = content.Value<string>("category") ?? string.Empty,
+                Priority = content.Value<string>("priority") ?? string.Empty,
+                Status = content.Value<string>("approvalStatus") ?? "Published",
+                CreateDate = content.CreateDate,
+                UpdateDate = content.UpdateDate
+            };
+        }
+
+        [HttpGet("pending-approvals")]
+        public IActionResult GetPendingApprovals()
         {
             try
             {
-                var contentType = _contentTypeService.Get("contentItem");
-                if (contentType == null)
-                    return Ok(new List<ContentItemModel>());
+                var pendingItems = new List<object>();
 
-                // Get all content and filter for contentItem type
-                var allContent = _contentService.GetPagedChildren(-1, 0, 1000, out var totalRecords)
-                    .Where(x => x.ContentType.Alias == "contentItem")
-                    .ToList();
-                
-                // Also get children of root content nodes
-                var rootContent = _contentService.GetRootContent();
+                // Get all content items with pending approval
+                var rootContent = _contentService.GetRootContent().ToList();
+
                 foreach (var root in rootContent)
                 {
-                    var children = _contentService.GetPagedChildren(root.Id, 0, 1000, out var childrenTotal)
-                        .Where(x => x.ContentType.Alias == "contentItem");
-                    allContent.AddRange(children);
-                }
+                    var descendants = _contentService.GetPagedDescendants(root.Id, 0, 1000, out _);
 
-                var pendingItems = allContent
-                    .Where(x => x.GetValue<string>("status") == "Pending Approval")
-                    .Select(MapToContentItemModel)
-                    .ToList();
+                    var contentItems = descendants
+                        .Where(x => x.ContentType.Alias == "contentItem" &&
+                                   x.GetValue<string>("approvalStatus") == "Pending Approval")
+                        .ToList();
+
+                    foreach (var content in contentItems)
+                    {
+                        var approvalHistoryJson = content.GetValue<string>("approvalHistory");
+                        ApprovalWorkflow workflow = null;
+
+                        if (!string.IsNullOrEmpty(approvalHistoryJson))
+                        {
+                            try
+                            {
+                                workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
+                            }
+                            catch (Exception ex)
+                            {
+                                // Log error but continue
+                            }
+                        }
+
+                        var item = new
+                        {
+                            id = content.Id,
+                            name = content.Name,
+                            createdBy = content.CreatorId,
+                            createDate = content.CreateDate,
+                            priority = content.GetValue<string>("priority") ?? "medium",
+                            category = content.GetValue<string>("category") ?? "",
+                            approvalType = workflow?.Steps.Count == 1 ? "Single" : "Multiple",
+                            totalApprovals = workflow?.Steps.Count ?? 0,
+                            completedApprovals = workflow?.Steps.Count(s => s.IsApproved) ?? 0,
+                            approvalProgress = $"{workflow?.Steps.Count(s => s.IsApproved) ?? 0}/{workflow?.Steps.Count ?? 0}",
+                            currentStep = workflow?.Steps.FirstOrDefault(s => !s.IsApproved)?.ApproverRole ?? "Unknown"
+                        };
+
+                        pendingItems.Add(item);
+                    }
+                }
 
                 return Ok(pendingItems);
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = "Error retrieving pending content", error = ex.Message });
-            }
-        }
-
-        [HttpGet("all")]
-        public IActionResult GetAllContent()
-        {
-            try
-            {
-                var contentType = _contentTypeService.Get("contentItem");
-                if (contentType == null)
-                    return Ok(new List<ContentItemModel>());
-
-                // Get all content and filter for contentItem type
-                var allContent = _contentService.GetPagedChildren(-1, 0, 1000, out var totalRecords)
-                    .Where(x => x.ContentType.Alias == "contentItem")
-                    .ToList();
-                
-                // Also get children of root content nodes
-                var rootContent = _contentService.GetRootContent();
-                foreach (var root in rootContent)
-                {
-                    var children = _contentService.GetPagedChildren(root.Id, 0, 1000, out var childrenTotal)
-                        .Where(x => x.ContentType.Alias == "contentItem");
-                    allContent.AddRange(children);
-                }
-
-                var allItems = allContent
-                    .Select(MapToContentItemModel)
-                    .ToList();
-
-                return Ok(allItems);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = "Error retrieving all content", error = ex.Message });
+                return StatusCode(500, new { error = "Failed to load pending approvals", details = ex.Message });
             }
         }
 
@@ -128,22 +170,78 @@ namespace UmbracoAngularCMS.Controllers
             {
                 var content = _contentService.GetById(id);
                 if (content == null)
-                    return NotFound();
+                    return NotFound(new { error = "Content not found" });
 
-                content.SetValue("status", "Approved");
-                content.SetValue("approvedBy", request.ApprovedBy);
-                content.SetValue("approvalDate", DateTime.Now);
+                var approvalHistoryJson = content.GetValue<string>("approvalHistory");
+                if (string.IsNullOrEmpty(approvalHistoryJson))
+                    return BadRequest(new { error = "No approval workflow found" });
 
-                var result = _contentService.SaveAndPublish(content);
-                
-                if (result.Success)
-                    return Ok(new { message = "Content approved and published successfully" });
-                else
-                    return BadRequest(new { message = "Failed to approve content", errors = result.EventMessages?.GetAll().Select(e => e.Message) });
+                var workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
+                var currentStep = workflow.Steps.FirstOrDefault(s => !s.IsApproved);
+
+                if (currentStep != null)
+                {
+                    currentStep.IsApproved = true;
+                    currentStep.ApprovedBy = request.ApprovedBy ?? "Unknown";
+                    currentStep.ApprovalDate = DateTime.Now;
+
+                    content.SetValue("approvalHistory", JsonSerializer.Serialize(workflow));
+
+                    // Check if all approved
+                    if (workflow.Steps.All(s => s.IsApproved))
+                    {
+                        content.SetValue("approvalStatus", "Approved");
+
+                        // AUTO-PUBLISH: SaveAndPublish instead of just Save
+                        var publishResult = _contentService.SaveAndPublish(content);
+
+                        if (publishResult.Success)
+                        {
+                            return Ok(new
+                            {
+                                message = workflow.Steps.Count == 1
+                                    ? "Content approved and published successfully!"
+                                    : "All approvals complete. Content has been published!",
+                                published = true,
+                                canPublish = true
+                            });
+                        }
+                        else
+                        {
+                            // If publish failed, still save the approval
+                            _contentService.Save(content);
+
+                            var errors = string.Join(", ", publishResult.EventMessages?.GetAll()
+                                .Select(x => x.Message));
+
+                            return Ok(new
+                            {
+                                message = "Content approved but could not be published automatically. " + errors,
+                                published = false,
+                                canPublish = true,
+                                errors = errors
+                            });
+                        }
+                    }
+                    else
+                    {
+                        // Not all approved yet, just save
+                        _contentService.Save(content);
+                        var remaining = workflow.Steps.Count(s => !s.IsApproved);
+                        return Ok(new
+                        {
+                            message = $"Approval recorded. {remaining} more approval(s) needed.",
+                            published = false,
+                            canPublish = false
+                        });
+                    }
+                }
+
+                return Ok(new { message = "No pending approvals for this content" });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = "Error approving content", error = ex.Message });
+                return StatusCode(500, new { error = "Failed to approve content", details = ex.Message });
             }
         }
 
@@ -156,124 +254,37 @@ namespace UmbracoAngularCMS.Controllers
                 if (content == null)
                     return NotFound();
 
-                content.SetValue("status", "Rejected");
-                content.SetValue("approvedBy", request.ApprovedBy);
-                content.SetValue("approvalDate", DateTime.Now);
+                content.SetValue("approvalStatus", "Rejected");
 
-                var result = _contentService.Save(content);
-                
-                if (result.Success)
-                    return Ok(new { message = "Content rejected successfully" });
-                else
-                    return BadRequest(new
+                // Update workflow to show rejection
+                var approvalHistoryJson = content.GetValue<string>("approvalHistory");
+                if (!string.IsNullOrEmpty(approvalHistoryJson))
+                {
+                    var workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
+                    var currentStep = workflow.Steps.FirstOrDefault(s => !s.IsApproved);
+                    if (currentStep != null)
                     {
-                        message = "Failed to reject content",
-                        errors = result.EventMessages?.GetAll().Select(e => e.Message)
-                    });
+                        currentStep.Comments = $"Rejected by {request.ApprovedBy ?? request.RejectedBy ?? "Unknown"}";
+                    }
+                    content.SetValue("approvalHistory", JsonSerializer.Serialize(workflow));
+                }
+
+                _contentService.Save(content);
+
+                return Ok(new { message = "Content rejected successfully" });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = "Error rejecting content", error = ex.Message });
+                return StatusCode(500, new { error = "Failed to reject content", details = ex.Message });
             }
         }
 
-        private ContentItemModel MapToContentItemModel(IPublishedContent content)
-        {
-            return new ContentItemModel
-            {
-                Id = content.Id,
-                Title = content.Value<string>("title") ?? "",
-                ParagraphContent = content.Value<string>("paragraphContent") ?? "",
-                ImageUrl = content.Value<IPublishedContent>("image")?.Url() ?? "",
-                Status = content.Value<string>("status") ?? "",
-                CreatedBy = content.Value<string>("createdBy") ?? "",
-                ApprovedBy = content.Value<string>("approvedBy") ?? "",
-                ApprovalDate = content.Value<DateTime?>("approvalDate"),
-                CreateDate = content.CreateDate
-            };
-        }
 
-        private ContentItemModel MapToContentItemModel(IContent content)
-        {
-            return new ContentItemModel
-            {
-                Id = content.Id,
-                Title = content.GetValue<string>("title") ?? "",
-                ParagraphContent = content.GetValue<string>("paragraphContent") ?? "",
-                ImageUrl = ResolveImageUrl(content.GetValue("image")),
-                Status = content.GetValue<string>("status") ?? "",
-                CreatedBy = content.GetValue<string>("createdBy") ?? "",
-                ApprovedBy = content.GetValue<string>("approvedBy") ?? "",
-                ApprovalDate = content.GetValue<DateTime?>("approvalDate"),
-                CreateDate = content.CreateDate
-            };
-        }
-
-        private string ResolveImageUrl(object? imageValue)
-        {
-            if (imageValue == null)
-                return "";
-
-            var imageString = imageValue.ToString();
-            if (string.IsNullOrEmpty(imageString))
-                return "";
-
-            try
-            {
-                // Try to parse as UDI string first
-                if (imageString.StartsWith("umb://media/"))
-                {
-                    if (UdiParser.TryParse(imageString, out var udi))
-                    {
-                        var mediaItem = _publishedContentQuery.Content(udi);
-                        return mediaItem?.Url() ?? "";
-                    }
-                }
-
-                // Try to parse as JSON (newer media picker format)
-                if (imageString.StartsWith("[") || imageString.StartsWith("{"))
-                {
-                    try
-                    {
-                        var jsonElement = JsonSerializer.Deserialize<JsonElement>(imageString);
-                        if (jsonElement.ValueKind == JsonValueKind.Array && jsonElement.GetArrayLength() > 0)
-                        {
-                            var firstItem = jsonElement[0];
-                            if (firstItem.TryGetProperty("udi", out var udiElement))
-                            {
-                                var udiString = udiElement.GetString();
-                                if (!string.IsNullOrEmpty(udiString) && UdiParser.TryParse(udiString, out var jsonUdi))
-                                {
-                                    var mediaItem = _publishedContentQuery.Content(jsonUdi);
-                                    return mediaItem?.Url() ?? "";
-                                }
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // If JSON parsing fails, continue to integer parsing
-                    }
-                }
-
-                // Try to parse as integer ID (legacy)
-                if (int.TryParse(imageString, out var id))
-                {
-                    var mediaItem = _publishedContentQuery.Content(id);
-                    return mediaItem?.Url() ?? "";
-                }
-            }
-            catch
-            {
-                // If all parsing fails, return empty string
-            }
-
-            return "";
-        }
     }
-
     public class ApprovalRequest
     {
-        public string ApprovedBy { get; set; } = "";
+        public string? ApprovedBy { get; set; }
+        public string? RejectedBy { get; set; }
+        public string? Comments { get; set; }
     }
 }
