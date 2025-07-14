@@ -2,21 +2,24 @@
 {
     public class ApprovalWorkflow
     {
-        public int Id { get; set; }
         public string Name { get; set; }
         public List<ApprovalStep> Steps { get; set; } = new List<ApprovalStep>();
         public bool RequiresAllApprovals { get; set; }
+        public DateTime CreatedDate { get; set; } = DateTime.Now;
+        public string CreatedBy { get; set; }
     }
 
     public class ApprovalStep
     {
         public int Order { get; set; }
         public string ApproverRole { get; set; }
-        public string ApproverEmail { get; set; }
+        public List<string> RequiredApproverGroups { get; set; } = new List<string>();
         public bool IsApproved { get; set; }
         public string ApprovedBy { get; set; }
+        public string ApproverEmail { get; set; }
         public DateTime? ApprovalDate { get; set; }
         public string Comments { get; set; }
+        public string Action { get; set; } // "Approved" or "Rejected"
     }
 
     public class ContentItemDto

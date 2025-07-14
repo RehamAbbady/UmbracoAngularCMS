@@ -19,9 +19,9 @@
                     <th>Created By</th>
                     <th>Category</th>
                     <th>Priority</th>
-                    <th>Approval Type</th>
+                    <th>Workflow</th>
                     <th>Progress</th>
-                    <th>Current Step</th>
+                    <th>Waiting For</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -42,30 +42,48 @@
                     </td>
                     <td>
                         <span class="badge" ng-class="{
-                            'badge-success': item.approvalType === 'Single',
-                            'badge-warning': item.approvalType === 'Multiple'
-                        }">{{item.approvalType}}</span>
+                              'badge-success' : item.totalApprovals= = =1,
+                              'badge-warning' : item.totalApprovals= = =2,
+                              'badge-important' : item.totalApprovals>
+                            2
+                            }">{{item.workflowName || item.approvalType}}
+                        </span>
                     </td>
-                    <td>{{item.approvalProgress}}</td>
+                    <td>
+                        <div class="progress" style="margin-bottom: 0; width: 100px;">
+                            <div class="bar" ng-style="{width: (item.completedApprovals / item.totalApprovals * 100) + '%'}">
+                                {{item.approvalProgress}}
+                            </div>
+                        </div>
+                    </td>
                     <td>{{item.currentStep}}</td>
                     <td>
-                        <button class="btn btn-primary btn-xs" ng-click="vm.approve(item)">
-                            <i class="icon-check"></i> Approve
-                        </button>
-                        <button class="btn btn-danger btn-xs" ng-click="vm.reject(item)">
-                            <i class="icon-delete"></i> Reject
-                        </button>
+                        <div ng-if="!item.hasApproved && item.canApprove">
+                            <button class="btn btn-primary btn-xs" ng-click="vm.approve(item)">
+                                <i class="icon-check"></i> Approve
+                            </button>
+                            <button class="btn btn-danger btn-xs" ng-click="vm.reject(item)">
+                                <i class="icon-delete"></i> Reject
+                            </button>
+                        </div>
+                        <div ng-if="item.hasApproved" class="text-muted">
+                            <small>You approved this</small>
+                        </div>
+                        <div ng-if="!item.canApprove && !item.hasApproved" class="text-muted">
+                            <small>Not your turn</small>
+                        </div>
                     </td>
                 </tr>
             </tbody>
         </table>
 
         <div class="alert alert-info" style="margin-top: 20px;">
-            <h5>Approval Rules:</h5>
+            <h5>Workflow Rules:</h5>
             <ul>
-                <li><strong>Single Approval:</strong> Low priority or Blog/News - Editor can publish after approval</li>
-                <li><strong>Multiple Approval:</strong> Medium priority or Announcements - Requires Manager approval</li>
-                <li><strong>Executive Approval:</strong> High/Urgent priority - Requires Director approval</li>
+                <li><strong>Quick Approval (1 step):</strong> Low priority, Blog, or News - Editor approval only</li>
+                <li><strong>Standard Approval (2 steps):</strong> Medium priority or Announcements - Editor → Manager</li>
+                <li><strong>Executive Approval (3 steps):</strong> High/Urgent priority - Editor → Manager → Director</li>
+                <li><strong>Important:</strong> Each user can only approve once per content item</li>
             </ul>
         </div>
     </div>

@@ -34,8 +34,11 @@ namespace UmbracoAngularCMS.NotificationHandlers
 
                         if (string.IsNullOrEmpty(currentStatus) || currentStatus == "Draft")
                         {
-                            // Initialize approval workflow based on content
-                            var workflow = GetWorkflowForContent(content);
+                            // Get the creator's information
+                            var creator = _userService.GetByProviderKey(content.CreatorId);
+
+                            // Initialize approval workflow
+                            var workflow = GetWorkflowForContent(content, creator?.Name);
                             if (workflow != null)
                             {
                                 var approvalHistory = JsonSerializer.Serialize(workflow);
@@ -48,107 +51,74 @@ namespace UmbracoAngularCMS.NotificationHandlers
             }
         }
 
-        private ApprovalWorkflow GetWorkflowForContent(IContent content)
+        private ApprovalWorkflow GetWorkflowForContent(IContent content, string creatorName)
         {
             var category = content.GetValue<string>("category");
             var priority = content.GetValue<string>("priority");
 
-            if (priority == "low" || category == "blog" )
-            {
-                return new ApprovalWorkflow
-                {
-                    Name = "Single Approval",
-                    RequiresAllApprovals = true,
-                    Steps = new List<ApprovalStep>
-                    {
-                        new ApprovalStep
-                        {
-                            Order = 1,
-                            ApproverRole = "Editor",
-                            ApproverEmail = "editor@company.com",
-                            IsApproved = false
-                        }
-                    }
-                };
-            }
+            // Create workflow name based on requirements
+            var workflowName = DetermineWorkflowName(category, priority);
+            var steps = DetermineWorkflowSteps(category, priority);
 
-            // MULTIPLE APPROVALS for medium priority
-            if (priority == "medium" || category == "announcement")
-            {
-                return new ApprovalWorkflow
-                {
-                    Name = "Standard Approval",
-                    RequiresAllApprovals = true,
-                    Steps = new List<ApprovalStep>
-                    {
-                        new ApprovalStep
-                        {
-                            Order = 1,
-                            ApproverRole = "Editor",
-                            ApproverEmail = "editor@company.com",
-                            IsApproved = false
-                        },
-                        new ApprovalStep
-                        {
-                            Order = 2,
-                            ApproverRole = "Manager",
-                            ApproverEmail = "manager@company.com",
-                            IsApproved = false
-                        }
-                    }
-                };
-            }
-
-            // THREE APPROVALS for high/urgent priority
-            if (priority == "high" || priority == "urgent")
-            {
-                return new ApprovalWorkflow
-                {
-                    Name = "Executive Approval",
-                    RequiresAllApprovals = true,
-                    Steps = new List<ApprovalStep>
-                    {
-                        new ApprovalStep
-                        {
-                            Order = 1,
-                            ApproverRole = "Editor",
-                            ApproverEmail = "editor@company.com",
-                            IsApproved = false
-                        },
-                        new ApprovalStep
-                        {
-                            Order = 2,
-                            ApproverRole = "Manager",
-                            ApproverEmail = "manager@company.com",
-                            IsApproved = false
-                        },
-                        new ApprovalStep
-                        {
-                            Order = 3,
-                            ApproverRole = "Director",
-                            ApproverEmail = "director@company.com",
-                            IsApproved = false
-                        }
-                    }
-                };
-            }
-
-            // Default to single approval
             return new ApprovalWorkflow
             {
-                Name = "Single Approval",
+                Name = workflowName,
                 RequiresAllApprovals = true,
-                Steps = new List<ApprovalStep>
-                {
-                    new ApprovalStep
-                    {
-                        Order = 1,
-                        ApproverRole = "Editor",
-                        ApproverEmail = "editor@company.com",
-                        IsApproved = false
-                    }
-                }
+                Steps = steps,
+                CreatedBy = creatorName ?? "System"
             };
+        }
+
+        private string DetermineWorkflowName(string category, string priority)
+        {
+            if (priority == "low")
+                return "Quick Approval (Single Step)";
+
+            if (priority == "high")
+                return "Executive Approval (3 Steps)";
+
+            return "Standard Approval (2 Steps)";
+        }
+
+        private List<ApprovalStep> DetermineWorkflowSteps(string category, string priority)
+        {
+            var steps = new List<ApprovalStep>();
+
+            // First step - Editor approval
+            steps.Add(new ApprovalStep
+            {
+                Order = 1,
+                ApproverRole = "editor",
+                RequiredApproverGroups = new List<string> { "editor", "administrators" },
+                IsApproved = false
+            });
+
+            // Medium priority or announcements need manager approval
+            if (priority == "medium" || category == "announcement" ||
+                priority == "high" || priority == "urgent")
+            {
+                steps.Add(new ApprovalStep
+                {
+                    Order = 2,
+                    ApproverRole = "manager",
+                    RequiredApproverGroups = new List<string> { "manager", "director", "administrators" },
+                    IsApproved = false
+                });
+            }
+
+            // High/urgent priority needs director approval
+            if (priority == "high" || priority == "urgent")
+            {
+                steps.Add(new ApprovalStep
+                {
+                    Order = 3,
+                    ApproverRole = "director",
+                    RequiredApproverGroups = new List<string> { "director", "administrators" },
+                    IsApproved = false
+                });
+            }
+
+            return steps;
         }
     }
 }

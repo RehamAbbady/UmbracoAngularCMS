@@ -1,114 +1,140 @@
-﻿using Umbraco.Cms.Core.Events;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using Umbraco.Cms.Core.Models;
+using Umbraco.Cms.Core.Models.Membership;
 using Umbraco.Cms.Core.Services;
-using Umbraco.Cms.Core.Notifications;
+using UmbracoAngularCMS.Models;
 
 namespace UmbracoAngularCMS.Services
 {
-    public class ApprovalWorkflowService
+    public interface IApprovalWorkflowService
     {
-        private readonly IContentService _contentService;
+        ApprovalWorkflow CreateWorkflowForContent(IContent content);
+        List<IUser> GetPotentialApproversForRole(string role);
+        bool CanUserApproveStep(IUser user, ApprovalStep step);
+    }
+
+    public class ApprovalWorkflowService : IApprovalWorkflowService
+    {
         private readonly IUserService _userService;
 
-        public ApprovalWorkflowService(IContentService contentService, IUserService userService)
+        public ApprovalWorkflowService(IUserService userService)
         {
-            _contentService = contentService;
             _userService = userService;
         }
 
-        public bool ProcessApproval(IContent content, string approverEmail)
+        public ApprovalWorkflow CreateWorkflowForContent(IContent content)
         {
-            var currentStatus = content.GetValue<string>("status");
-            var approvalLevel = content.GetValue<string>("approvalLevel");
-            var approvalHistory = content.GetValue<string>("approvalHistory") ?? "";
-
-            var historyEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm} - {approverEmail} approved at {approvalLevel}\n";
-            content.SetValue("approvalHistory", approvalHistory + historyEntry);
-
-            switch (approvalLevel)
-            {
-                case "Level 1":
-                    return ProcessLevel1Approval(content, approverEmail);
-                case "Level 2":
-                    return ProcessLevel2Approval(content, approverEmail);
-                case "Level 3":
-                    return ProcessLevel3Approval(content, approverEmail);
-                default:
-                    return false;
-            }
-        }
-
-        private bool ProcessLevel1Approval(IContent content, string approverEmail)
-        {
-            if (RequiresLevel2Approval(content))
-            {
-                content.SetValue("status", "Pending Approval");
-                content.SetValue("approvalLevel", "Level 2");
-                content.SetValue("currentApprover", GetLevel2Approver(content));
-                _contentService.Save(content);
-                return false; 
-            }
-            else
-            {
-                content.SetValue("status", "Approved");
-                content.SetValue("approvedBy", approverEmail);
-                content.SetValue("approvalDate", DateTime.Now);
-                _contentService.SaveAndPublish(content);
-                return true;
-            }
-        }
-
-        private bool ProcessLevel2Approval(IContent content, string approverEmail)
-        {
-            if (RequiresLevel3Approval(content))
-            {
-                content.SetValue("status", "Pending Approval");
-                content.SetValue("approvalLevel", "Level 3");
-                content.SetValue("currentApprover", GetLevel3Approver(content));
-                _contentService.Save(content);
-                return false; 
-            }
-            else
-            {
-                content.SetValue("status", "Approved");
-                content.SetValue("approvedBy", approverEmail);
-                content.SetValue("approvalDate", DateTime.Now);
-                _contentService.SaveAndPublish(content);
-                return true;
-            }
-        }
-
-        private bool ProcessLevel3Approval(IContent content, string approverEmail)
-        {
-            content.SetValue("status", "Approved");
-            content.SetValue("approvedBy", approverEmail);
-            content.SetValue("approvalDate", DateTime.Now);
-            _contentService.SaveAndPublish(content);
-            return true;
-        }
-
-        private bool RequiresLevel2Approval(IContent content)
-        { 
             var category = content.GetValue<string>("category");
-            return category == "Important" || category == "Critical";
+            var priority = content.GetValue<string>("priority");
+            var creator = _userService.GetByProviderKey(content.CreatorId);
+
+            var workflow = new ApprovalWorkflow
+            {
+                Name = DetermineWorkflowName(category, priority),
+                RequiresAllApprovals = true,
+                Steps = DetermineWorkflowSteps(category, priority),
+                CreatedBy = creator?.Name ?? "System",
+                CreatedDate = DateTime.Now
+            };
+
+            return workflow;
         }
 
-        private bool RequiresLevel3Approval(IContent content)
+        public List<IUser> GetPotentialApproversForRole(string role)
         {
-            // Add your business logic here
-            var category = content.GetValue<string>("category");
-            return category == "Critical";
+            // Get all users who could approve for a given role
+            var approvers = new List<IUser>();
+
+            switch (role.ToLower())
+            {
+                case "editors":
+                    approvers.AddRange(GetUsersInGroup("editor"));
+                    break;
+                case "manager":
+                    approvers.AddRange(GetUsersInGroup("manager"));
+                    approvers.AddRange(GetUsersInGroup("director")); // Directors can also approve manager steps
+                    break;
+                case "director":
+                    approvers.AddRange(GetUsersInGroup("director"));
+                    break;
+            }
+
+            // Administrators can always approve
+            approvers.AddRange(GetUsersInGroup("administrators"));
+
+            // Remove duplicates
+            return approvers.GroupBy(u => u.Id).Select(g => g.First()).ToList();
         }
 
-        private string GetLevel2Approver(IContent content)
+        public bool CanUserApproveStep(IUser user, ApprovalStep step)
         {
-            return "manager@company.com";
+            var userGroups = user.Groups.Select(g => g.Alias).ToList();
+            return step.RequiredApproverGroups.Any(g => userGroups.Contains(g));
         }
 
-        private string GetLevel3Approver(IContent content)
+        private List<IUser> GetUsersInGroup(string groupAlias)
         {
-            // Return appropriate Level 3 approver based on content
-            return "director@company.com";
+            var group = _userService.GetUserGroupByAlias(groupAlias);
+            if (group == null) return new List<IUser>();
+
+            return _userService.GetAllInGroup(group.Id).ToList();
+        }
+
+        private string DetermineWorkflowName(string category, string priority)
+        {
+            // Determine workflow based on business rules
+            if (IsQuickApproval(category, priority))
+                return "Quick Approval (Single Step)";
+
+            if (IsExecutiveApproval(category, priority))
+                return "Executive Approval (3 Steps)";
+
+            return "Standard Approval (2 Steps)";
+        }
+
+        private List<ApprovalStep> DetermineWorkflowSteps(string category, string priority)
+        {
+            var steps = new List<ApprovalStep>();
+
+            // Always need at least editor approval
+            steps.Add(CreateApprovalStep(1, "editor", new[] { "editor", "administrators" }));
+
+            // Add manager step for medium+ priority
+            if (!IsQuickApproval(category, priority))
+            {
+                steps.Add(CreateApprovalStep(2, "manager", new[] { "manager", "director", "administrators" }));
+            }
+
+            // Add director step for high priority
+            if (IsExecutiveApproval(category, priority))
+            {
+                steps.Add(CreateApprovalStep(3, "director", new[] { "director", "administrators" }));
+            }
+
+            return steps;
+        }
+
+        private ApprovalStep CreateApprovalStep(int order, string role, string[] requiredGroups)
+        {
+            return new ApprovalStep
+            {
+                Order = order,
+                ApproverRole = role,
+                RequiredApproverGroups = requiredGroups.ToList(),
+                IsApproved = false
+            };
+        }
+
+        private bool IsQuickApproval(string category, string priority)
+        {
+            return priority == "low" || category == "blog" || category == "news";
+        }
+
+        private bool IsExecutiveApproval(string category, string priority)
+        {
+            return priority == "high" || priority == "urgent";
         }
     }
 }

@@ -3,18 +3,37 @@
     vm.pendingItems = [];
     vm.loading = false;
     vm.error = null;
+    vm.currentUser = null;
 
     function init() {
-        loadPendingContent();
+        // Get current user first
+        getCurrentUser().then(function () {
+            loadPendingContent();
+        });
+    }
+
+    function getCurrentUser() {
+        return userService.getCurrentUser().then(function (user) {
+            vm.currentUser = user;
+            console.log("Current user:", user);
+        });
     }
 
     function loadPendingContent() {
         vm.loading = true;
         vm.error = null;
 
-        // Use the public API endpoint that we know works
-        $http.get('/api/ContentApi/pending-approvals').then(function (response) {
-            vm.pendingItems = response.data;
+        // Pass current user info in the request
+        var config = {
+            headers: {
+                'X-Current-User-Id': vm.currentUser.id.toString(),
+                'X-Current-User-Email': vm.currentUser.email,
+                'X-Current-User-Name': vm.currentUser.name
+            }
+        };
+
+        $http.get('/api/ContentApi/pending-approvals', config).then(function (response) {
+            vm.pendingItems = response.data.items || response.data;
             vm.loading = false;
         }).catch(function (error) {
             vm.loading = false;
@@ -24,44 +43,44 @@
     }
 
     vm.approve = function (item) {
-        if (vm.loading) return;
+        if (vm.loading || !vm.currentUser) return;
 
         vm.loading = true;
 
-        userService.getCurrentUser().then(function (user) {
-            $http.post('/api/ContentApi/approve/' + item.id, {
-                approvedBy: user.name
-            }).then(function (response) {
-                notificationsService.success("Success", response.data.message || "Content approved successfully");
-                vm.loading = false;
-                loadPendingContent();
-            }).catch(function (error) {
-                vm.loading = false;
-                var errorMsg = error.data && error.data.error ? error.data.error : "Failed to approve content";
-                notificationsService.error("Error", errorMsg);
-                console.error("Approval error:", error);
-            });
+        $http.post('/api/ContentApi/approve/' + item.id, {
+            approvedBy: vm.currentUser.name,
+            approvedById: vm.currentUser.id,
+            approvedByEmail: vm.currentUser.email
+        }).then(function (response) {
+            notificationsService.success("Success", response.data.message || "Content approved successfully");
+            vm.loading = false;
+            loadPendingContent();
+        }).catch(function (error) {
+            vm.loading = false;
+            var errorMsg = error.data && error.data.error ? error.data.error : "Failed to approve content";
+            notificationsService.error("Error", errorMsg);
+            console.error("Approval error:", error);
         });
     };
 
     vm.reject = function (item) {
-        if (vm.loading) return;
+        if (vm.loading || !vm.currentUser) return;
 
         vm.loading = true;
 
-        userService.getCurrentUser().then(function (user) {
-            $http.post('/api/ContentApi/reject/' + item.id, {
-                rejectedBy: user.name
-            }).then(function (response) {
-                notificationsService.success("Success", response.data.message || "Content rejected");
-                vm.loading = false;
-                loadPendingContent();
-            }).catch(function (error) {
-                vm.loading = false;
-                var errorMsg = error.data && error.data.error ? error.data.error : "Failed to reject content";
-                notificationsService.error("Error", errorMsg);
-                console.error("Rejection error:", error);
-            });
+        $http.post('/api/ContentApi/reject/' + item.id, {
+            rejectedBy: vm.currentUser.name,
+            rejectedById: vm.currentUser.id,
+            rejectedByEmail: vm.currentUser.email
+        }).then(function (response) {
+            notificationsService.success("Success", response.data.message || "Content rejected");
+            vm.loading = false;
+            loadPendingContent();
+        }).catch(function (error) {
+            vm.loading = false;
+            var errorMsg = error.data && error.data.error ? error.data.error : "Failed to reject content";
+            notificationsService.error("Error", errorMsg);
+            console.error("Rejection error:", error);
         });
     };
 

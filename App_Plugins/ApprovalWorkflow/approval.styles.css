@@ -1,2 +1,110 @@
-﻿body {
+﻿.approval-dashboard {
+    padding: 20px;
+}
+
+.umbraco-dashboard-box {
+    background: #f8f8f8;
+    border: 1px solid #d9d9d9;
+    border-radius: 3px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+    .umbraco-dashboard-box h4 {
+        margin: 0 0 10px 0;
+        color: #666;
+        font-size: 14px;
+        font-weight: normal;
+    }
+
+.stat-number {
+    font-size: 36px;
+    font-weight: bold;
+    color: #333;
+    margin: 0;
+}
+
+.approval-list {
+    margin-top: 20px;
+}
+
+.content-link {
+    cursor: pointer;
+    color: #0066cc;
+    text-decoration: none;
+}
+
+    .content-link:hover {
+        text-decoration: underline;
+    }
+
+.label {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 16px;
+    color: #fff !important;
+    vertical-align: baseline;
+    white-space: nowrap;
+    text-shadow: 0 -1px 0 rgba(0,0,0,0.25);
+    border-radius: 3px;
+}
+
+.label-important {
+    background-color: #d32f2f !important;
+    color: #ffffff !important;
+}
+
+.label-warning {
+    background-color: #f57c00 !important;
+    color: #ffffff !important;
+}
+
+.label-info {
+    background-color: #1976d2 !important;
+    color: #ffffff !important;
+}
+
+.badge {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #ffffff !important;
+    background-color: #999999;
+    border-radius: 10px;
+}
+
+.badge-success {
+    background-color: #5cb85c !important;
+}
+
+.badge-warning {
+    background-color: #f0ad4e !important;
+}
+
+.badge-important {
+    background-color: #d9534f !important;
+}
+
+.approval-dashboard table {
+    color: #333333 !important;
+}
+
+    .approval-dashboard table td,
+    .approval-dashboard table th {
+        color: #333333 !important;
+    }
+
+.btn-toolbar {
+    margin: 10px 0;
+}
+
+.umb-panel-group__details {
+    margin: 20px 0;
+}
+.progress .bar {
+    color: #000000;
 }

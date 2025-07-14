@@ -8,6 +8,7 @@
     <Content Include="App_Plugins\ApprovalWorkflow\approval-dialog.html" />
     <Content Include="App_Plugins\ApprovalWorkflow\approval.styles.css" />
     <Content Include="App_Plugins\ApprovalWorkflow\dashboard.html" />
+    <Content Include="App_Plugins\ApprovalWorkflow\lang\en-US.xml" />
     <Content Include="App_Plugins\DynamicDropdown\dynamicdropdown.html" />
   </ItemGroup>
 
@@ -27,6 +28,10 @@
     <None Include="app_plugins\approvalworkflow\package.manifest" />
     <None Include="App_Plugins\DynamicDropdown\dynamicdropdown.controller.js" />
     <None Include="app_plugins\dynamicdropdown\package.manifest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Handlers\" />
   </ItemGroup>
 
   <PropertyGroup>

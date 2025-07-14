@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<language alias="en-US" intName="English (US)" culture="en-US">
+	<area alias="dashboard">
+		<key alias="approvalDashboard">Approval Dashboard</key>
+	</area>
+</language>

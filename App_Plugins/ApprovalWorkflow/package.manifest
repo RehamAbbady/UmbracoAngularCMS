@@ -1,18 +1,22 @@
 {
-  "dashboards": [
-    {
-      "alias": "approvalDashboard",
-      "view": "/App_Plugins/ApprovalWorkflow/dashboard.html",
-      "sections": ["content"],
-      "weight": 10,
-      "access": [
-        { "grant": "editor" },
-        { "grant": "manager" },
-        { "grant": "director" }
-      ]
-    }
-  ],
-  "javascript": [
-    "/App_Plugins/ApprovalWorkflow/approval.controller.js"
-  ]
+    "dashboards": [
+        {
+            "alias": "approvalDashboard",
+            "name": "Approval Dashboard",
+            "view": "/App_Plugins/ApprovalWorkflow/dashboard.html",
+            "sections": [ "content" ],
+            "weight": 10,
+            "access": [
+                { "grant": "editor" },
+                { "grant": "manager" },
+                { "grant": "director" }
+            ]
+        }
+    ],
+    "javascript": [
+        "/App_Plugins/ApprovalWorkflow/approval.controller.js"
+    ],
+    "css": [
+        "/App_Plugins/ApprovalWorkflow/approval.styles.css"
+    ]
 }
