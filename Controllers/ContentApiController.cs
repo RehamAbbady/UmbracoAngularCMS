@@ -94,7 +94,6 @@ namespace UmbracoAngularCMS.Controllers
         {
             var imageUrl = content.Value<IPublishedContent>("featuredImage")?.Url() ?? string.Empty;
 
-            // Convert relative URL to absolute URL
             if (!string.IsNullOrEmpty(imageUrl) && imageUrl.StartsWith("/"))
             {
                 var request = _httpContextAccessor.HttpContext?.Request;
@@ -125,7 +124,6 @@ namespace UmbracoAngularCMS.Controllers
             {
                 IUser currentUser = null;
 
-                // Try to get user from custom headers (sent by JavaScript)
                 if (Request.Headers.TryGetValue("X-Current-User-Id", out var userIdHeader))
                 {
                     if (int.TryParse(userIdHeader, out var userId))
@@ -427,10 +425,6 @@ namespace UmbracoAngularCMS.Controllers
             {
                 return StatusCode(500, new { error = "Failed to reject content", details = ex.Message });
             }
-        }
-        private IActionResult Forbidden(object value)
-        {
-            return StatusCode(403, value);
         }
 
         private object GetWorkflowSummary(ApprovalWorkflow workflow)

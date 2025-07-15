@@ -129,7 +129,7 @@ namespace UmbracoAngularCMS.Services
 
         private bool IsQuickApproval(string category, string priority)
         {
-            return priority == "low" || category == "blog" || category == "news";
+            return priority == "low" || category == "blog";
         }
 
         private bool IsExecutiveApproval(string category, string priority)

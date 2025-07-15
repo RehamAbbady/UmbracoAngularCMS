@@ -13,7 +13,7 @@
                         return {
                             id: item.key,
                             value: item.key,
-                            name: item.value // Display name
+                            name: item.value 
                         };
                     });
 
