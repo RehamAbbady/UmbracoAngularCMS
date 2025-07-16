@@ -9,7 +9,13 @@
     <Content Include="App_Plugins\ApprovalWorkflow\approval.styles.css" />
     <Content Include="App_Plugins\ApprovalWorkflow\dashboard.html" />
     <Content Include="App_Plugins\ApprovalWorkflow\lang\en-US.xml" />
+    <Content Include="App_Plugins\ApprovalWorkflow\preview-dialog.html" />
+    <Content Include="App_Plugins\ApprovalWorkflow\rejection-dialog.html" />
+    <Content Include="App_Plugins\ApproverPicker\approverpicker.html" />
+    <Content Include="App_Plugins\ApproverPicker\approverpicker.styles.css" />
     <Content Include="App_Plugins\DynamicDropdown\dynamicdropdown.html" />
+    <Content Include="App_Plugins\WriterDashboard\writer.dashboard.html" />
+    <Content Include="App_Plugins\WriterDashboard\writer.dashboard.styles.css" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,8 +32,16 @@
   <ItemGroup>
     <None Include="App_Plugins\ApprovalWorkflow\approval.controller.js" />
     <None Include="app_plugins\approvalworkflow\package.manifest" />
+    <None Include="App_Plugins\ApproverPicker\approverpicker.controller.js" />
+    <None Include="app_plugins\approverpicker\package.manifest" />
     <None Include="App_Plugins\DynamicDropdown\dynamicdropdown.controller.js" />
     <None Include="app_plugins\dynamicdropdown\package.manifest" />
+    <None Include="app_plugins\writerdashboard\package.manifest" />
+    <None Include="App_Plugins\WriterDashboard\writer.dashboard.controller.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Services\" />
   </ItemGroup>
 
   <PropertyGroup>

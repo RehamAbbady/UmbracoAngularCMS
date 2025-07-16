@@ -1,0 +1,49 @@
+﻿<div ng-controller="ApproverPickerController as vm" class="approver-picker">
+
+    <div class="approval-type-section">
+        <label>Approval Requirements:</label>
+        <select ng-model="vm.approvalType" class="umb-property-editor">
+            <option value="all">All assigned must approve</option>
+            <option value="any">Any one can approve</option>
+            <option value="minimum">Minimum number of approvals</option>
+        </select>
+
+        <div ng-if="vm.approvalType === 'minimum'" class="minimum-input">
+            <label>Minimum approvals needed:</label>
+            <input type="number" ng-model="vm.minimumApprovals" min="1" class="umb-property-editor" />
+        </div>
+    </div>
+
+    <div class="approver-sections">
+        <div class="section">
+            <h5><i class="icon-user"></i> Specific Users</h5>
+            <div class="user-list">
+                <label ng-repeat="user in vm.users" class="approver-item">
+                    <input type="checkbox"
+                           ng-checked="vm.isUserSelected(user)"
+                           ng-click="vm.toggleUser(user)" />
+                    <span>{{user.name}} ({{user.email}})</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="section">
+            <h5><i class="icon-users"></i> User Groups</h5>
+            <div class="group-list">
+                <label ng-repeat="group in vm.groups" class="approver-item">
+                    <input type="checkbox"
+                           ng-checked="vm.isGroupSelected(group)"
+                           ng-click="vm.toggleGroup(group)" />
+                    <span>{{group.name}}</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="selected-summary">
+        <p>
+            <strong>Selected:</strong>
+            {{vm.selectedUsers.length}} users, {{vm.selectedGroups.length}} groups
+        </p>
+    </div>
+</div>

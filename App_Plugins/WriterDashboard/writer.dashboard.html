@@ -1,0 +1,71 @@
+﻿<!-- writer-dashboard.html -->
+<div ng-controller="WriterDashboardController as vm" class="writer-dashboard">
+    <h3>My Content Dashboard</h3>
+
+    <!-- Status Cards -->
+    <div class="status-cards">
+        <div class="status-card pending" ng-click="vm.filterContent('pending')">
+            <h4>{{vm.pendingCount}}</h4>
+            <p>Pending Approval</p>
+        </div>
+        <div class="status-card approved" ng-click="vm.filterContent('approved')">
+            <h4>{{vm.approvedCount}}</h4>
+            <p>Approved</p>
+        </div>
+        <div class="status-card rejected" ng-click="vm.filterContent('rejected')">
+            <h4>{{vm.rejectedCount}}</h4>
+            <p>Rejected</p>
+        </div>
+    </div>
+
+    <!-- Content List -->
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Status</th>
+                <th>Last Action</th>
+                <th>Comments</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr ng-repeat="item in vm.getFilteredContent()">
+                <td>{{item.title}}</td>
+                <td>
+                    <span class="status-badge" ng-class="item.status.toLowerCase()">
+                        {{item.status}}
+                    </span>
+                </td>
+                <td>{{item.lastActionDate | date:'short'}}</td>
+                <td>
+                    <span ng-if="item.status === 'Rejected'" class="rejection-preview">
+                        {{item.lastComment | limitTo:50}}...
+                        <a ng-click="vm.viewRejectionDetails(item)">View Full</a>
+                    </span>
+                </td>
+                <td>
+                    <button ng-if="item.status === 'Rejected'"
+                            ng-click="vm.editContent(item.id)"
+                            class="btn btn-xs">
+                        Edit & Resubmit
+                    </button>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Rejection Details Modal -->
+    <div ng-if="vm.showRejectionModal" class="modal">
+        <div class="modal-content">
+            <h4>Rejection Details: {{vm.selectedItem.title}}</h4>
+            <div ng-repeat="rejection in vm.selectedItem.rejections">
+                <p><strong>Rejected by:</strong> {{rejection.userName}}</p>
+                <p><strong>Date:</strong> {{rejection.date | date:'medium'}}</p>
+                <p><strong>Comments:</strong></p>
+                <blockquote>{{rejection.comments}}</blockquote>
+            </div>
+            <button ng-click="vm.showRejectionModal = false">Close</button>
+        </div>
+    </div>
+</div>

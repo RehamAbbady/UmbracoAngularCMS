@@ -1,0 +1,23 @@
+{
+  "dashboards": [
+    {
+      "alias": "writerDashboard",
+      "name": "My Content",
+      "view": "/App_Plugins/WriterDashboard/writer.dashboard.html",
+      "sections": ["content"],
+      "weight": 20,
+        "access": [
+            { "grant": "writer" },
+            { "grant": "editor" },
+            { "grant": "manager" },
+            { "grant": "director" }
+        ]
+    }
+  ],
+  "javascript": [
+    "/App_Plugins/WriterDashboard/writer.dashboard.controller.js"
+  ],
+  "css": [
+    "/App_Plugins/WriterDashboard/writer.dashboard.styles.css"
+  ]
+}

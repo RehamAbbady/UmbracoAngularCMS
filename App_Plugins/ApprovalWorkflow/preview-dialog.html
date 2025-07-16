@@ -1,0 +1,75 @@
+﻿<!-- App_Plugins/ApprovalWorkflow/preview-dialog.html -->
+<div class="umb-dialog umb-dialog-medium">
+    <div class="umb-dialog-header">
+        <h1>Content Comparison</h1>
+        <p>Review changes before approving</p>
+    </div>
+
+    <div class="umb-dialog-body">
+        <div ng-if="model.loading" class="text-center">
+            <umb-load-indicator></umb-load-indicator>
+        </div>
+
+        <div ng-if="!model.loading && model.comparison" class="content-comparison">
+            <div class="comparison-summary" ng-if="model.comparison.changes.count > 0">
+                <h4>Changes Summary:</h4>
+                <ul class="changes-list">
+                    <li ng-repeat="change in model.comparison.changes.summary">
+                        <i class="icon-edit"></i> {{change}}
+                    </li>
+                </ul>
+            </div>
+
+            <div class="comparison-grid">
+                <div class="version published">
+                    <h4>Current Published Version</h4>
+                    <div class="content-preview" ng-if="model.comparison.published">
+                        <h5>{{model.comparison.published.title}}</h5>
+                        <p class="meta">
+                            Category: {{model.comparison.published.category}}<br>
+                            Priority: {{model.comparison.published.priority}}
+                        </p>
+                        <div class="content-body" ng-bind-html="model.comparison.published.content | safe"></div>
+                        <img ng-if="model.comparison.published.imageUrl"
+                             ng-src="{{model.comparison.published.imageUrl}}"
+                             class="comparison-image">
+                    </div>
+                    <div ng-if="!model.comparison.published" class="no-content">
+                        <p>No published version exists</p>
+                    </div>
+                </div>
+
+                <div class="version proposed">
+                    <h4>Proposed Changes</h4>
+                    <div class="content-preview">
+                        <h5 ng-class="{'changed': model.comparison.current.title !== model.comparison.published.title}">
+                            {{model.comparison.current.title}}
+                        </h5>
+                        <p class="meta">
+                            <span ng-class="{'changed': model.comparison.current.category !== model.comparison.published.category}">
+                                Category: {{model.comparison.current.category}}
+                            </span><br>
+                            <span ng-class="{'changed': model.comparison.current.priority !== model.comparison.published.priority}">
+                                Priority: {{model.comparison.current.priority}}
+                            </span>
+                        </p>
+                        <div class="content-body"
+                             ng-bind-html="model.comparison.current.content | safe"
+                             ng-class="{'changed': model.comparison.current.content !== model.comparison.published.content}">
+                        </div>
+                        <img ng-if="model.comparison.current.imageUrl"
+                             ng-src="{{model.comparison.current.imageUrl}}"
+                             class="comparison-image"
+                             ng-class="{'changed': model.comparison.current.imageUrl !== model.comparison.published.imageUrl}">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="umb-dialog-footer btn-toolbar umb-btn-toolbar">
+        <button type="button" class="btn btn-link" ng-click="model.close()">
+            Close
+        </button>
+    </div>
+</div>

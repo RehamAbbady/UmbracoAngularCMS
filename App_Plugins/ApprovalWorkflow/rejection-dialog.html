@@ -1,0 +1,39 @@
+﻿<!-- App_Plugins/ApprovalWorkflow/rejection-dialog.html -->
+<div class="umb-dialog">
+    <div class="umb-dialog-body">
+        <p>Please provide feedback to help the content creator improve their submission.</p>
+
+        <div class="control-group">
+            <label for="comments" class="control-label">
+                Rejection Reason <small class="color-red">*Required</small>
+            </label>
+            <textarea ng-model="model.comment"
+                      id="comments"
+                      class="umb-textarea"
+                      rows="6"
+                      required
+                      placeholder="Please explain why this content is being rejected and what changes are needed..."
+                      style="width: 100%;">
+            </textarea>
+            <small class="help-text">
+                Be specific and constructive in your feedback to help the writer improve the content.
+            </small>
+        </div>
+    </div>
+
+    <div class="umb-dialog-footer btn-toolbar umb-btn-toolbar">
+        <button type="button"
+                class="btn btn-link"
+                ng-click="model.close()">
+            {{model.closeButtonLabel}}
+        </button>
+
+        <button type="button"
+                class="btn btn-danger"
+                ng-click="model.submit(model)"
+                ng-disabled="!model.comment || model.comment.trim() === ''">
+            <i class="icon-delete"></i>
+            {{model.submitButtonLabel}}
+        </button>
+    </div>
+</div>

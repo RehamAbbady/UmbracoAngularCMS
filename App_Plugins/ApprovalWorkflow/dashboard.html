@@ -42,10 +42,9 @@
                     </td>
                     <td>
                         <span class="badge" ng-class="{
-                              'badge-success' : item.totalApprovals= = =1,
-                              'badge-warning' : item.totalApprovals= = =2,
-                              'badge-important' : item.totalApprovals>
-                            2
+                              'badge-success' : item.totalApprovals === 1,
+                              'badge-warning' : item.totalApprovals === 2,
+                              'badge-important' : item.totalApprovals > 2
                             }">{{item.workflowName || item.approvalType}}
                         </span>
                     </td>

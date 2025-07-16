@@ -1,0 +1,65 @@
+﻿.approver-picker {
+    padding: 10px;
+}
+
+.approval-type-section {
+    margin-bottom: 20px;
+}
+
+    .approval-type-section label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+
+.minimum-input {
+    margin-top: 10px;
+}
+
+    .minimum-input input {
+        width: 100px;
+    }
+
+.approver-sections {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.section {
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 10px;
+}
+
+    .section h5 {
+        margin: 0 0 10px 0;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #eee;
+    }
+
+.user-list, .group-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.approver-item {
+    display: block;
+    padding: 5px;
+    cursor: pointer;
+}
+
+    .approver-item:hover {
+        background: #f5f5f5;
+    }
+
+    .approver-item input {
+        margin-right: 8px;
+    }
+
+.selected-summary {
+    margin-top: 15px;
+    padding: 10px;
+    background: #f0f0f0;
+    border-radius: 5px;
+}

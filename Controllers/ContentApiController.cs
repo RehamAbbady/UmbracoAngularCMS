@@ -117,35 +117,124 @@ namespace UmbracoAngularCMS.Controllers
             };
         }
 
+        [HttpPost("approve/{id}")]
+        public IActionResult ApproveContent(int id, [FromBody] ApprovalRequest request)
+        {
+            try
+            {
+                var content = _contentService.GetById(id);
+                if (content == null)
+                    return NotFound(new { error = "Content not found" });
+
+                var currentUser = GetCurrentUser(request);
+                if (currentUser == null)
+                    return Unauthorized(new { error = "User not authenticated" });
+
+                var approvalHistoryJson = content.GetValue<string>("approvalHistory");
+                if (string.IsNullOrEmpty(approvalHistoryJson))
+                    return BadRequest(new { error = "No approval workflow found" });
+
+                var workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
+
+                // Check if user already approved
+                var userId = currentUser.Id.ToString();
+                var hasAlreadyApproved = workflow.Requirements
+                    .SelectMany(r => r.Actions)
+                    .Any(a => a.UserId == userId && a.Action == "Approved");
+
+                if (hasAlreadyApproved)
+                {
+                    return BadRequest(new
+                    {
+                        error = "You have already approved this content"
+                    });
+                }
+
+                // Check if user CAN approve (simplified)
+                var canApprove = false;
+                var userGroups = currentUser.Groups.Select(g => g.Alias).ToList();
+
+                foreach (var requirement in workflow.Requirements)
+                {
+                    // Check if user is directly assigned
+                    if (requirement.AssignedTo.Contains(userId))
+                    {
+                        canApprove = true;
+                        break;
+                    }
+
+                    // Check if user's group is assigned
+                    if (requirement.AssignedTo.Any(g => userGroups.Contains(g)))
+                    {
+                        canApprove = true;
+                        break;
+                    }
+                }
+
+                if (!canApprove)
+                {
+                    return StatusCode(403, new
+                    {
+                        error = "You are not assigned to approve this content"
+                    });
+                }
+
+                // Add approval
+                var approvalRequirement = workflow.Requirements.First();
+                approvalRequirement.Actions.Add(new ApprovalAction
+                {
+                    UserId = userId,
+                    UserName = currentUser.Name,
+                    UserEmail = currentUser.Email,
+                    Action = "Approved",
+                    ActionDate = DateTime.Now,
+                    Comments = request.Comments
+                });
+
+                // Update workflow
+                content.SetValue("approvalHistory", JsonSerializer.Serialize(workflow));
+                content.SetValue("approvalStatus", "Approved");
+
+                // Publish if user has permission
+                var canPublish = userGroups.Any(g => new[] { "Administrators", "Manager", "Director", "Editors" }.Contains(g));
+
+                if (canPublish)
+                {
+                    var publishResult = _contentService.SaveAndPublish(content);
+                    if (publishResult.Success)
+                    {
+                        return Ok(new
+                        {
+                            message = "Content approved and published!",
+                            published = true
+                        });
+                    }
+                }
+
+                _contentService.Save(content);
+                return Ok(new
+                {
+                    message = "Content approved successfully!",
+                    published = false
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Failed to approve content", details = ex.Message });
+            }
+        }
+
         [HttpGet("pending-approvals")]
         public IActionResult GetPendingApprovals()
         {
             try
             {
-                IUser currentUser = null;
-
-                if (Request.Headers.TryGetValue("X-Current-User-Id", out var userIdHeader))
-                {
-                    if (int.TryParse(userIdHeader, out var userId))
-                    {
-                        currentUser = _userService.GetUserById(userId);
-                    }
-                }
-
-                // Fallback to email if provided
-                if (currentUser == null && Request.Headers.TryGetValue("X-Current-User-Email", out var emailHeader))
-                {
-                    currentUser = _userService.GetByEmail(emailHeader);
-                }
-
-                // Final fallback to backoffice security
+                var currentUser = GetCurrentUser();
                 if (currentUser == null)
-                {
-                    currentUser = _backOfficeSecurityAccessor.BackOfficeSecurity?.CurrentUser;
-                }
+                    return Ok(new List<object>());
 
-                var userGroups = currentUser?.Groups.Select(g => g.Alias).ToList() ?? new List<string>();
-                var currentUserEmail = currentUser?.Email;
+                var userId = currentUser.Id.ToString();
+                var userGroups = currentUser.Groups.Select(g => g.Alias).ToList();
                 var pendingItems = new List<object>();
 
                 var rootContent = _contentService.GetRootContent().ToList();
@@ -162,42 +251,30 @@ namespace UmbracoAngularCMS.Controllers
                     foreach (var content in contentItems)
                     {
                         var approvalHistoryJson = content.GetValue<string>("approvalHistory");
-                        ApprovalWorkflow workflow = null;
+                        if (string.IsNullOrEmpty(approvalHistoryJson)) continue;
 
-                        if (!string.IsNullOrEmpty(approvalHistoryJson))
-                        {
-                            try
-                            {
-                                workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
-                            }
-                            catch (Exception ex)
-                            {
-                                continue;
-                            }
-                        }
-
+                        var workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
                         if (workflow == null) continue;
 
-                        // Check if current user has already approved
-                        var hasApproved = false;
-                        if (currentUser != null && !string.IsNullOrEmpty(currentUserEmail))
+                        // Check if user can see this item (is assigned)
+                        var isAssigned = false;
+                        foreach (var requirement in workflow.Requirements)
                         {
-                            hasApproved = workflow.Steps.Any(s =>
-                                s.IsApproved &&
-                                s.ApproverEmail?.Equals(currentUserEmail, StringComparison.OrdinalIgnoreCase) == true);
+                            if (requirement.AssignedTo.Contains(userId) ||
+                                requirement.AssignedTo.Any(g => userGroups.Contains(g)))
+                            {
+                                isAssigned = true;
+                                break;
+                            }
                         }
 
-                        // Find current step
-                        var currentStep = workflow.Steps.FirstOrDefault(s => !s.IsApproved);
+                        if (!isAssigned) continue;
 
-                        // Check if user can approve current step
-                        var canApprove = false;
-                        if (currentStep != null && !hasApproved && currentUser != null)
-                        {
-                            canApprove = currentStep.RequiredApproverGroups.Any(g => userGroups.Contains(g));
-                        }
+                        // Check if user already approved
+                        var hasApproved = workflow.Requirements
+                            .SelectMany(r => r.Actions)
+                            .Any(a => a.UserId == userId && a.Action == "Approved");
 
-                        // Get creator name
                         var creator = _userService.GetByProviderKey(content.CreatorId);
 
                         var item = new
@@ -208,20 +285,9 @@ namespace UmbracoAngularCMS.Controllers
                             createDate = content.CreateDate,
                             priority = content.GetValue<string>("priority") ?? "medium",
                             category = content.GetValue<string>("category") ?? "",
-                            workflowName = workflow.Name,
-                            approvalType = workflow.Steps.Count == 1 ? "Quick" : workflow.Steps.Count == 2 ? "Standard" : "Executive",
-                            totalApprovals = workflow.Steps.Count,
-                            completedApprovals = workflow.Steps.Count(s => s.IsApproved),
-                            approvalProgress = $"{workflow.Steps.Count(s => s.IsApproved)}/{workflow.Steps.Count}",
-                            currentStep = currentStep?.ApproverRole ?? "Complete",
+                            canApprove = !hasApproved,
                             hasApproved = hasApproved,
-                            canApprove = canApprove,
-                            approvalHistory = workflow.Steps.Where(s => s.IsApproved).Select(s => new
-                            {
-                                approvedBy = s.ApprovedBy,
-                                approvedDate = s.ApprovalDate?.ToString("yyyy-MM-dd HH:mm"),
-                                role = s.ApproverRole
-                            })
+                            assignedTo = GetAssignedToDisplay(content)
                         };
 
                         pendingItems.Add(item);
@@ -232,194 +298,62 @@ namespace UmbracoAngularCMS.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = "Failed to load pending approvals", details = ex.Message });
+                return StatusCode(500, new { error = ex.Message });
             }
         }
-
-        [HttpPost("approve/{id}")]
-        public IActionResult ApproveContent(int id, [FromBody] ApprovalRequest request)
+        [HttpPost("reject/{id}")]
+        public IActionResult RejectContent(int id, [FromBody] RejectionRequest request)
         {
             try
             {
+                // Validate comment is required
+                if (string.IsNullOrWhiteSpace(request.Comments))
+                {
+                    return BadRequest(new { error = "Rejection comment is required" });
+                }
+
                 var content = _contentService.GetById(id);
                 if (content == null)
                     return NotFound(new { error = "Content not found" });
 
-                // Get current user from request
-                IUser currentUser = null;
-
-                // Try to get by ID if provided
-                if (request.ApprovedById > 0)
-                {
-                    currentUser = _userService.GetUserById(request.ApprovedById);
-                }
-
-                // Fallback to email
-                if (currentUser == null && !string.IsNullOrEmpty(request.ApprovedByEmail))
-                {
-                    currentUser = _userService.GetByEmail(request.ApprovedByEmail);
-                }
-
-                // Fallback to name
-                if (currentUser == null && !string.IsNullOrEmpty(request.ApprovedBy))
-                {
-                    currentUser = _userService.GetByUsername(request.ApprovedBy);
-                }
-
-                // Final fallback to backoffice security
-                if (currentUser == null)
-                {
-                    currentUser = _backOfficeSecurityAccessor.BackOfficeSecurity?.CurrentUser;
-                }
-
+                var currentUser = GetCurrentUser(request);
                 if (currentUser == null)
                     return Unauthorized(new { error = "User not authenticated" });
-                var approvalHistoryJson = content.GetValue<string>("approvalHistory");
-                if (string.IsNullOrEmpty(approvalHistoryJson))
-                    return BadRequest(new { error = "No approval workflow found" });
 
-                var workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
-
-                var currentUserEmail = currentUser.Email;
-                var hasAlreadyApproved = workflow.Steps.Any(s =>
-                    s.IsApproved &&
-                    s.ApproverEmail?.Equals(currentUserEmail, StringComparison.OrdinalIgnoreCase) == true);
-
-                if (hasAlreadyApproved)
-                {
-                    return BadRequest(new
-                    {
-                        error = "You have already approved this content",
-                        message = "Each user can only approve content once in the workflow"
-                    });
-                }
-
-                var currentStep = workflow.Steps.FirstOrDefault(s => !s.IsApproved);
-
-                if (currentStep == null)
-                {
-                    return BadRequest(new { error = "No pending approvals for this content" });
-                }
-
-                var userGroups = currentUser.Groups.Select(g => g.Alias).ToList();
-                var canApprove = currentStep.RequiredApproverGroups.Any(g => userGroups.Contains(g));
-
-                if (!canApprove)
-                {
-                    return StatusCode(403, new
-                    {
-                        error = "You don't have permission to approve this step",
-                        message = $"This step requires one of these roles: {string.Join(", ", currentStep.RequiredApproverGroups)}",
-                        yourRoles = userGroups
-                    });
-                }
-
-                // Approve the step
-                currentStep.IsApproved = true;
-                currentStep.ApprovedBy = currentUser.Name;
-                currentStep.ApproverEmail = currentUser.Email;
-                currentStep.ApprovalDate = DateTime.Now;
-                currentStep.Action = "Approved";
-                currentStep.Comments = request.Comments;
-
-                content.SetValue("approvalHistory", JsonSerializer.Serialize(workflow));
-
-                // Check if all approved
-                if (workflow.Steps.All(s => s.IsApproved))
-                {
-                    content.SetValue("approvalStatus", "Approved");
-
-                    // Auto-publish if user has permission
-                    if (userGroups.Contains("administrators") ||
-                        userGroups.Contains("manager") ||
-                        userGroups.Contains("director") ||
-                        (workflow.Steps.Count == 1 && userGroups.Contains("editor")))
-                    {
-                        var publishResult = _contentService.SaveAndPublish(content);
-
-                        if (publishResult.Success)
-                        {
-                            return Ok(new
-                            {
-                                message = "Content approved and published successfully!",
-                                workflow = GetWorkflowSummary(workflow),
-                                published = true
-                            });
-                        }
-                        else
-                        {
-                            _contentService.Save(content);
-                            var errors = string.Join(", ", publishResult.EventMessages
-                                .GetAll().Where(x => x.MessageType == EventMessageType.Error)
-                                .Select(x => x.Message));
-
-                            return Ok(new
-                            {
-                                message = "Content approved but could not be published automatically. " + errors,
-                                workflow = GetWorkflowSummary(workflow),
-                                published = false,
-                                errors = errors
-                            });
-                        }
-                    }
-                    else
-                    {
-                        _contentService.Save(content);
-                        return Ok(new
-                        {
-                            message = "Content approved. A user with publish permissions needs to publish it.",
-                            workflow = GetWorkflowSummary(workflow),
-                            published = false
-                        });
-                    }
-                }
-
-                // Not all approved yet
-                _contentService.Save(content);
-                var remaining = workflow.Steps.Count(s => !s.IsApproved);
-                var nextStep = workflow.Steps.FirstOrDefault(s => !s.IsApproved);
-
-                return Ok(new
-                {
-                    message = $"Your approval has been recorded. {remaining} more approval(s) needed.",
-                    nextApprover = nextStep?.ApproverRole,
-                    workflow = GetWorkflowSummary(workflow),
-                    published = false
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { error = "Failed to approve content", details = ex.Message });
-            }
-        }
-
-        [HttpPost("reject/{id}")]
-        public IActionResult RejectContent(int id, [FromBody] ApprovalRequest request)
-        {
-            try
-            {
-                var content = _contentService.GetById(id);
-                if (content == null)
-                    return NotFound();
-
-                content.SetValue("approvalStatus", "Rejected");
-
-                // Update workflow to show rejection
                 var approvalHistoryJson = content.GetValue<string>("approvalHistory");
                 if (!string.IsNullOrEmpty(approvalHistoryJson))
                 {
                     var workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
-                    var currentStep = workflow.Steps.FirstOrDefault(s => !s.IsApproved);
-                    if (currentStep != null)
+
+                    // Add rejection to the first incomplete requirement user can act on
+                    foreach (var requirement in workflow.Requirements)
                     {
-                        currentStep.Comments = $"Rejected by {request.ApprovedBy ?? request.RejectedBy ?? "Unknown"}";
+                        if (CanUserActOnRequirement(currentUser, requirement))
+                        {
+                            requirement.Actions.Add(new ApprovalAction
+                            {
+                                UserId = currentUser.Id.ToString(),
+                                UserName = currentUser.Name,
+                                UserEmail = currentUser.Email,
+                                Action = "Rejected",
+                                ActionDate = DateTime.Now,
+                                Comments = request.Comments
+                            });
+                            break;
+                        }
                     }
+
                     content.SetValue("approvalHistory", JsonSerializer.Serialize(workflow));
                 }
 
+                content.SetValue("approvalStatus", "Rejected");
+                content.SetValue("rejectionReason", request.Comments);
+                content.SetValue("rejectedBy", currentUser.Name);
+                content.SetValue("rejectionDate", DateTime.Now.ToString("O"));
+
                 _contentService.Save(content);
 
-                return Ok(new { message = "Content rejected successfully" });
+                return Ok(new { message = "Content rejected with feedback provided to the author" });
             }
             catch (Exception ex)
             {
@@ -427,23 +361,260 @@ namespace UmbracoAngularCMS.Controllers
             }
         }
 
-        private object GetWorkflowSummary(ApprovalWorkflow workflow)
+        [HttpGet("my-content")]
+        public IActionResult GetMyContent([FromQuery] int? userId = null)
         {
-            return new
+            try
             {
-                name = workflow.Name,
-                totalSteps = workflow.Steps.Count,
-                completedSteps = workflow.Steps.Count(s => s.IsApproved),
-                steps = workflow.Steps.Select(s => new
+                var currentUser = GetCurrentUser();
+                var targetUserId = userId ?? currentUser?.Id;
+
+                if (targetUserId == null)
+                    return BadRequest(new { error = "User ID required" });
+
+                var myContent = new List<object>();
+                var rootContent = _contentService.GetRootContent().ToList();
+
+                foreach (var root in rootContent)
                 {
-                    step = s.Order,
-                    role = s.ApproverRole,
-                    approved = s.IsApproved,
-                    approvedBy = s.ApprovedBy,
-                    approvedDate = s.ApprovalDate?.ToString("yyyy-MM-dd HH:mm"),
-                    action = s.Action
-                })
-            };
+                    var descendants = _contentService.GetPagedDescendants(root.Id, 0, 1000, out _);
+
+                    var userContent = descendants
+                        .Where(x => x.ContentType.Alias == "contentItem" &&
+                                   x.CreatorId == targetUserId)
+                        .ToList();
+
+                    foreach (var content in userContent)
+                    {
+                        var status = content.GetValue<string>("approvalStatus") ?? "Draft";
+                        var rejectionReason = content.GetValue<string>("rejectionReason");
+                        var rejectedBy = content.GetValue<string>("rejectedBy");
+                        var rejectionDate = content.GetValue<string>("rejectionDate");
+
+                        var item = new
+                        {
+                            id = content.Id,
+                            title = content.Name,
+                            status = status,
+                            createDate = content.CreateDate,
+                            updateDate = content.UpdateDate,
+                            lastActionDate = !string.IsNullOrEmpty(rejectionDate)
+                                ? DateTime.Parse(rejectionDate)
+                                : content.UpdateDate,
+                            rejectionDetails = status == "Rejected" ? new
+                            {
+                                reason = rejectionReason,
+                                rejectedBy = rejectedBy,
+                                date = rejectionDate
+                            } : null,
+                            canEdit = status == "Rejected" || status == "Draft"
+                        };
+
+                        myContent.Add(item);
+                    }
+                }
+
+                return Ok(myContent.OrderByDescending(c => ((dynamic)c).updateDate));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Failed to load content", details = ex.Message });
+            }
+        }
+
+        [HttpGet("content-comparison/{id}")]
+        public IActionResult GetContentComparison(int id)
+        {
+            try
+            {
+                var content = _contentService.GetById(id);
+                if (content == null)
+                    return NotFound(new { error = "Content not found" });
+
+                // Get current published version
+                IContent publishedVersion = null;
+                if (content.Published)
+                {
+                    publishedVersion = content;
+                }
+                else if (content.PublishedVersionId > 0)
+                {
+                    // Get the published version
+                    publishedVersion = _contentService.GetVersion(content.PublishedVersionId);
+                }
+
+                var comparison = new
+                {
+                    current = new
+                    {
+                        title = content.GetValue<string>("title"),
+                        content = content.GetValue<string>("content"),
+                        category = content.GetValue<string>("category"),
+                        priority = content.GetValue<string>("priority"),
+                        imageUrl = GetImageUrl(content)
+                    },
+                    published = publishedVersion != null ? new
+                    {
+                        title = publishedVersion.GetValue<string>("title"),
+                        content = publishedVersion.GetValue<string>("content"),
+                        category = publishedVersion.GetValue<string>("category"),
+                        priority = publishedVersion.GetValue<string>("priority"),
+                        imageUrl = GetImageUrl(publishedVersion)
+                    } : null,
+                    changes = GetChangeSummary(content, publishedVersion),
+                    hasChanges = publishedVersion == null || HasContentChanged(content, publishedVersion)
+                };
+
+                return Ok(comparison);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Failed to get comparison", details = ex.Message });
+            }
+        }
+
+        private IUser GetCurrentUser(ApprovalRequest request = null)
+        {
+            IUser currentUser = null;
+
+            // Try multiple methods to get current user
+            if (Request.Headers.TryGetValue("X-Current-User-Id", out var userIdHeader))
+            {
+                if (int.TryParse(userIdHeader, out var userId))
+                {
+                    currentUser = _userService.GetUserById(userId);
+                }
+            }
+
+            if (currentUser == null && request?.ApprovedById > 0)
+            {
+                currentUser = _userService.GetUserById(request.ApprovedById);
+            }
+
+            if (currentUser == null)
+            {
+                currentUser = _backOfficeSecurityAccessor.BackOfficeSecurity?.CurrentUser;
+            }
+
+            return currentUser;
+        }
+
+        private bool CanUserActOnRequirement(IUser user, ApprovalRequirement requirement)
+        {
+            var userGroups = user.Groups.Select(g => g.Alias).ToList();
+            var userId = user.Id.ToString();
+
+            if (requirement.Type == ApprovalType.AnyFromGroup &&
+                requirement.AssignedTo.Any(g => userGroups.Contains(g)))
+            {
+                return true;
+            }
+
+            if (requirement.Type == ApprovalType.SpecificPerson &&
+                requirement.AssignedTo.Contains(userId))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private object GetChangeSummary(IContent current, IContent published)
+        {
+            var changes = new List<string>();
+
+            if (published == null)
+            {
+                changes.Add("New content");
+                return new { summary = changes, count = changes.Count };
+            }
+
+            if (current.GetValue<string>("title") != published.GetValue<string>("title"))
+                changes.Add("Title changed");
+            if (current.GetValue<string>("content") != published.GetValue<string>("content"))
+                changes.Add("Content updated");
+            if (current.GetValue<string>("category") != published.GetValue<string>("category"))
+                changes.Add("Category changed");
+            if (current.GetValue<string>("priority") != published.GetValue<string>("priority"))
+                changes.Add("Priority changed");
+
+            return new { summary = changes, count = changes.Count };
+        }
+
+        private bool HasContentChanged(IContent current, IContent published)
+        {
+            if (published == null) return true;
+
+            return current.GetValue<string>("title") != published.GetValue<string>("title") ||
+                   current.GetValue<string>("content") != published.GetValue<string>("content") ||
+                   current.GetValue<string>("category") != published.GetValue<string>("category") ||
+                   current.GetValue<string>("priority") != published.GetValue<string>("priority");
+        }
+
+        private string GetImageUrl(IContent content)
+        {
+            // This would need proper implementation based on how images are stored
+            var imageValue = content.GetValue<string>("featuredImage");
+            return imageValue ?? string.Empty;
+        }
+        private string GetAssignedToDisplay(IContent content)
+        {
+            var assigned = new List<string>();
+
+            // Get assigned users
+            var userIds = content.GetValue<string>("assignedUsers");
+            if (!string.IsNullOrEmpty(userIds))
+            {
+                // Parse and get user names
+                var ids = ParseUserIds(userIds);
+                foreach (var id in ids)
+                {
+                    if (int.TryParse(id, out var userId))
+                    {
+                        var user = _userService.GetUserById(userId);
+                        if (user != null)
+                            assigned.Add(user.Name);
+                    }
+                }
+            }
+
+            // Get assigned groups
+            var groups = content.GetValue<string[]>("assignedGroups");
+            if (groups != null && groups.Any())
+            {
+                assigned.AddRange(groups);
+            }
+
+            return assigned.Any() ? string.Join(", ", assigned) : "Default approvers";
+        }
+        private List<string> ParseUserIds(string userIdString)
+        {
+            var userIds = new List<string>();
+
+            try
+            {
+                // Try parsing as JSON array first
+                if (userIdString.StartsWith("["))
+                {
+                    var ids = JsonSerializer.Deserialize<List<string>>(userIdString);
+                    userIds.AddRange(ids);
+                }
+                // Try parsing as comma-separated
+                else if (userIdString.Contains(","))
+                {
+                    userIds.AddRange(userIdString.Split(',').Select(id => id.Trim()));
+                }
+                // Single ID
+                else
+                {
+                    userIds.Add(userIdString.Trim());
+                }
+            }
+            catch (Exception ex)
+            {//log error
+            }
+
+            return userIds;
         }
 
     }
@@ -456,5 +627,9 @@ namespace UmbracoAngularCMS.Controllers
         public int RejectedById { get; set; }
         public string? RejectedByEmail { get; set; }
         public string? Comments { get; set; }
+    }
+    public class RejectionRequest : ApprovalRequest
+    {
+        public string Comments { get; set; } // Required for rejection
     }
 }

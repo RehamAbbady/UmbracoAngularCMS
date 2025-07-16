@@ -1,0 +1,21 @@
+{
+  "propertyEditors": [
+    {
+      "alias": "ApproverPicker",
+      "name": "Approver Picker",
+      "icon": "icon-users",
+      "group": "People",
+      "editor": {
+        "view": "/App_Plugins/ApproverPicker/approverpicker.html",
+        "valueType": "JSON"
+      }
+    }
+  ],
+  "javascript": [
+    "/App_Plugins/ApproverPicker/approverpicker.controller.js"
+  ],
+  "css": [
+    "/App_Plugins/ApproverPicker/approverpicker.styles.css"
+  ]
+}
+}

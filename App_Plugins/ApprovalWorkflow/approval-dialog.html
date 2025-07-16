@@ -1,10 +1,29 @@
-﻿<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8" />
-    <title></title>
-</head>
-<body>
+﻿<div class="umb-dialog">
+    <div class="umb-dialog-body">
+        <p>Are you sure you want to approve this content?</p>
 
-</body>
-</html>
+        <div class="control-group">
+            <label for="comments">Comments (optional):</label>
+            <textarea ng-model="model.comments"
+                      id="comments"
+                      class="umb-textarea"
+                      rows="4"
+                      placeholder="Add any comments about this approval..."></textarea>
+        </div>
+    </div>
+
+    <div class="umb-dialog-footer btn-toolbar umb-btn-toolbar">
+        <button type="button"
+                class="btn btn-link"
+                ng-click="model.close()">
+            {{model.closeButtonLabel}}
+        </button>
+
+        <button type="button"
+                class="btn btn-success"
+                ng-click="model.submit(model)">
+            <i class="icon-check"></i>
+            {{model.submitButtonLabel}}
+        </button>
+    </div>
+</div>
