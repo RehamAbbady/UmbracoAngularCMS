@@ -115,10 +115,15 @@ angular.module('umbraco')
         }
 
         // Update the reject function in approval.controller.js
+        // Alternative fix if you want to keep using the textbox view:
+
+        // Replace the vm.reject function in your approval.controller.js with this:
+
+        // Alternative fix if you want to keep using the textbox view:
+
         vm.reject = function (item) {
             if (vm.loading || !vm.currentUser) return;
 
-            // Use Umbraco's localization service to create a prompt
             overlayService.open({
                 title: "Reject Content - " + item.name,
                 subtitle: "Please provide a reason for rejection",
@@ -126,15 +131,13 @@ angular.module('umbraco')
                 submitButtonLabel: "Reject",
                 submitButtonStyle: "danger",
                 view: "views/propertyeditors/textbox/textbox.html",
-                textboxModel: {
+                value: "", // Use value instead of textboxModel
+                config: {
                     multiline: true,
-                    rows: 6,
-                    maxChars: 500,
-                    placeholder: "Please explain why this content is being rejected and what changes are needed...",
-                    value: ""
+                    maxlength: 500
                 },
                 submit: function (model) {
-                    var comment = model.textboxModel.value;
+                    var comment = model.value; // Use model.value instead of model.textboxModel.value
                     if (!comment || comment.trim() === '') {
                         notificationsService.error("Error", "Rejection reason is required");
                         return;
@@ -147,24 +150,51 @@ angular.module('umbraco')
                 }
             });
         };
-
         function performRejection(item, comment) {
             vm.loading = true;
 
-            $http.post('/api/ContentApi/reject/' + item.id, {
+            // Make sure we have current user
+            if (!vm.currentUser) {
+                notificationsService.error("Error", "User session expired. Please refresh and try again.");
+                vm.loading = false;
+                return;
+            }
+
+            // Include authentication headers like in loadPendingContent
+            var config = {
+                headers: {
+                    'X-Current-User-Id': vm.currentUser.id.toString(),
+                    'X-Current-User-Email': vm.currentUser.email,
+                    'X-Current-User-Name': vm.currentUser.name,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            var requestData = {
                 rejectedBy: vm.currentUser.name,
                 rejectedById: vm.currentUser.id,
                 rejectedByEmail: vm.currentUser.email,
                 comments: comment // Required!
-            }).then(function (response) {
-                notificationsService.success("Success", response.data.message || "Content rejected");
-                vm.loading = false;
-                loadPendingContent();
-            }).catch(function (error) {
-                vm.loading = false;
-                var errorMsg = error.data && error.data.error ? error.data.error : "Failed to reject content";
-                notificationsService.error("Error", errorMsg);
-            });
+            };
+
+            $http.post('/api/ContentApi/reject/' + item.id, requestData, config)
+                .then(function (response) {
+                    notificationsService.success("Success", response.data.message || "Content rejected");
+                    vm.loading = false;
+                    loadPendingContent();
+                })
+                .catch(function (error) {
+                    vm.loading = false;
+                    console.error("Rejection error:", error); // Add logging
+
+                    // Handle different error types
+                    if (error.status === 401 || error.status === 403) {
+                        notificationsService.error("Authentication Error", "Your session may have expired. Please refresh the page.");
+                    } else {
+                        var errorMsg = error.data && error.data.error ? error.data.error : "Failed to reject content";
+                        notificationsService.error("Error", errorMsg);
+                    }
+                });
         }
 
         vm.openContent = function (item) {

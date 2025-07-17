@@ -318,45 +318,86 @@ namespace UmbracoAngularCMS.Controllers
 
                 var currentUser = GetCurrentUser(request);
                 if (currentUser == null)
+                {
+                    var userIdHeader = Request.Headers["X-Current-User-Id"].FirstOrDefault();
+                    if (!string.IsNullOrEmpty(userIdHeader) && int.TryParse(userIdHeader, out var userId))
+                    {
+                        currentUser = _userService.GetUserById(userId);
+                    }
+                }
+
+                if (currentUser == null)
                     return Unauthorized(new { error = "User not authenticated" });
 
+                // Update approval history
                 var approvalHistoryJson = content.GetValue<string>("approvalHistory");
                 if (!string.IsNullOrEmpty(approvalHistoryJson))
                 {
-                    var workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
-
-                    // Add rejection to the first incomplete requirement user can act on
-                    foreach (var requirement in workflow.Requirements)
+                    try
                     {
-                        if (CanUserActOnRequirement(currentUser, requirement))
+                        var workflow = JsonSerializer.Deserialize<ApprovalWorkflow>(approvalHistoryJson);
+                        if (workflow != null)
                         {
-                            requirement.Actions.Add(new ApprovalAction
+                            // Add rejection to the first requirement the user can act on
+                            foreach (var requirement in workflow.Requirements)
                             {
-                                UserId = currentUser.Id.ToString(),
-                                UserName = currentUser.Name,
-                                UserEmail = currentUser.Email,
-                                Action = "Rejected",
-                                ActionDate = DateTime.Now,
-                                Comments = request.Comments
-                            });
-                            break;
+                                if (CanUserActOnRequirement(currentUser, requirement))
+                                {
+                                    requirement.Actions.Add(new ApprovalAction
+                                    {
+                                        UserId = currentUser.Id.ToString(),
+                                        UserName = currentUser.Name,
+                                        UserEmail = currentUser.Email,
+                                        Action = "Rejected",
+                                        ActionDate = DateTime.Now,
+                                        Comments = request.Comments
+                                    });
+                                    break;
+                                }
+                            }
+                            content.SetValue("approvalHistory", JsonSerializer.Serialize(workflow));
                         }
                     }
-
-                    content.SetValue("approvalHistory", JsonSerializer.Serialize(workflow));
+                    catch (JsonException ex)
+                    {
+                        // Log the error but continue with rejection
+                        Console.WriteLine($"Error parsing approval history: {ex.Message}");
+                    }
                 }
 
+                // Set all the rejection fields
                 content.SetValue("approvalStatus", "Rejected");
                 content.SetValue("rejectionReason", request.Comments);
                 content.SetValue("rejectedBy", currentUser.Name);
+                content.SetValue("rejectedById", currentUser.Id);
                 content.SetValue("rejectionDate", DateTime.Now.ToString("O"));
 
-                _contentService.Save(content);
+                // Clear any previous approval data
+                content.SetValue("approvedBy", string.Empty);
+                content.SetValue("approvedById", 0);
+                content.SetValue("approvalDate", string.Empty);
 
-                return Ok(new { message = "Content rejected with feedback provided to the author" });
+                // Save the content
+                var saveResult = _contentService.Save(content);
+
+                if (!saveResult.Success)
+                {
+                    return StatusCode(500, new { error = "Failed to save rejection status" });
+                }
+
+                // Log for debugging (remove in production)
+                Console.WriteLine($"Content {id} rejected successfully. Status: {content.GetValue<string>("approvalStatus")}");
+
+                return Ok(new
+                {
+                    message = "Content rejected with feedback provided to the author",
+                    contentId = id,
+                    newStatus = "Rejected"
+                });
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"Exception in RejectContent: {ex}");
                 return StatusCode(500, new { error = "Failed to reject content", details = ex.Message });
             }
         }
